@@ -23,8 +23,6 @@ services:
   timescaledb:
     image: timescale/timescaledb:latest-pg16
     container_name: ashes-marketeer-db
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
