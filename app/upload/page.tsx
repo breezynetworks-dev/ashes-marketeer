@@ -27,7 +27,6 @@ interface FileMetadata {
   filename: string
   size: number
   hash: string
-  path: string
 }
 
 interface ThoughtMessage {
@@ -208,7 +207,6 @@ export default function UploadPage() {
 
       // Step 3: Start batch processing
       const filesToProcess = metadata.map(f => ({
-        path: f.path,
         filename: f.filename,
         hash: f.hash,
         isDuplicate: duplicateFilenames.has(f.filename),

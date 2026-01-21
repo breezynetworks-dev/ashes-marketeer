@@ -1,7 +1,7 @@
 import { extractMarketplaceData, warmupGeminiCache, type ExtractionResult, type AIModel, type CacheStatus, DEFAULT_MODEL, getModelConfig } from './ai-extraction'
+import { getImage, removeImage, clearImages } from './image-store'
 
 export type NodeType = 'New Aela' | 'Halcyon' | 'Joeva' | 'Miraleth' | 'Winstead'
-import { readFile } from 'fs/promises'
 import { db, uploadHistory, marketplaceListings, settings } from '@/db'
 import { eq } from 'drizzle-orm'
 import { EventEmitter } from 'events'
@@ -42,7 +42,6 @@ async function updateUsageTracking(tokens: number, images: number): Promise<void
 export type BatchStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 export interface FileToProcess {
-  path: string
   filename: string
   hash: string
   isDuplicate?: boolean
@@ -214,6 +213,12 @@ async function processImage(
 ): Promise<{ result: ExtractionResult; attempts: number }> {
   let lastError: Error | null = null
 
+  // Get image from memory store
+  const imageBuffer = getImage(file.hash)
+  if (!imageBuffer) {
+    throw new Error(`Image not found in memory: ${file.filename}`)
+  }
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     // Check if aborted before each attempt
     if (signal?.aborted) {
@@ -222,15 +227,15 @@ async function processImage(
 
     try {
       const totalStart = performance.now()
-
-      const readStart = performance.now()
-      const imageBuffer = await readFile(file.path)
-      console.log(`[Timing] File read: ${(performance.now() - readStart).toFixed(0)}ms, file size: ${(imageBuffer.length / 1024).toFixed(0)}KB`)
+      console.log(`[Timing] Processing ${file.filename}, size: ${(imageBuffer.length / 1024).toFixed(0)}KB`)
 
       const extractStart = performance.now()
       const result = await extractMarketplaceData(imageBuffer, model, signal)
       console.log(`[Timing] Extraction: ${(performance.now() - extractStart).toFixed(0)}ms`)
       console.log(`[Timing] Total for ${file.filename}: ${(performance.now() - totalStart).toFixed(0)}ms`)
+
+      // Clean up image from memory after successful processing
+      removeImage(file.hash)
 
       return { result, attempts: attempt }
     } catch (error) {
@@ -246,6 +251,9 @@ async function processImage(
       }
     }
   }
+
+  // Clean up image from memory even on failure
+  removeImage(file.hash)
 
   throw lastError || new Error('Unknown error during image processing')
 }
@@ -360,6 +368,8 @@ export async function startBatchProcessing(batchId: string): Promise<void> {
           success: true,
           error: undefined,
         })
+        // Clean up duplicate from memory
+        removeImage(file.hash)
       } else {
         filesToProcess.push(file)
       }
@@ -687,6 +697,10 @@ export async function startBatchProcessing(batchId: string): Promise<void> {
 
   } catch (error) {
     state.status = 'failed'
+
+    // Clean up all remaining images from memory
+    const allHashes = state.files.map(f => f.hash)
+    clearImages(allHashes)
 
     // If abandoned, record all unprocessed files as abandoned
     if (state.shouldAbandon) {

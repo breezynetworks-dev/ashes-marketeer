@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { generateFileHash } from '@/lib/file-utils'
+import { storeImage } from '@/lib/image-store'
 
 const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg']
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -56,10 +57,13 @@ export async function POST(request: Request) {
       const arrayBuffer = await file.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
 
-      // Generate hash for duplicate detection
+      // Generate hash for duplicate detection and as storage key
       const hash = generateFileHash(buffer)
 
-      // Collect metadata (no file saving - processed in memory only)
+      // Store image in memory for later processing
+      storeImage(hash, buffer)
+
+      // Collect metadata
       metadata.push({
         filename: file.name,
         size: file.size,

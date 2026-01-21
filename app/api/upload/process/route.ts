@@ -20,9 +20,9 @@ export async function POST(request: NextRequest) {
 
     // Validate file objects
     for (const file of body.files) {
-      if (!file.path || !file.filename || !file.hash) {
+      if (!file.filename || !file.hash) {
         return NextResponse.json(
-          { error: 'Invalid file object: path, filename, and hash are required' },
+          { error: 'Invalid file object: filename and hash are required' },
           { status: 400 }
         )
       }

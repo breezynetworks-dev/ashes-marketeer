@@ -5,6 +5,7 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { BarChart3, LayoutGrid, Settings, Upload, ScrollText } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { APP_VERSION } from "@/lib/version"
 
 const navItems = [
   { href: "/upload", label: "Upload", icon: Upload },
@@ -41,7 +42,10 @@ export function Nav() {
             </div>
             <div className="flex flex-col">
               <span className="font-bold text-xl leading-tight tracking-tight">Fallen</span>
-              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Market Intel</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Market Intel</span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-muted-foreground/70">v{APP_VERSION}</span>
+              </div>
             </div>
           </Link>
         </div>

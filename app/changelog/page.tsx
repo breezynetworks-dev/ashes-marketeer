@@ -9,8 +9,24 @@ const roadmap = [
 
 const changelog = [
   {
-    version: "1.0.1",
+    version: "1.0.2",
     date: "January 21, 2026",
+    changes: [
+      "Switched to in-memory image storage (no disk writes)",
+      "Added automatic memory cleanup after processing",
+      "Added 60-minute TTL for abandoned uploads",
+      "Added background sweep every 2 minutes for expired images",
+      "Improved duplicate detection using content hash + date",
+      "Added Docker deployment configuration for Dokploy",
+      "Added automatic database migrations on container startup",
+      "Added Server Memory Management panel to Settings",
+      "Reorganized Settings page with side-by-side layout",
+      "Removed trend period from Settings (available on Market table)",
+    ],
+  },
+  {
+    version: "1.0.1",
+    date: "January 20, 2026",
     changes: [
       "Added parallel processing for image uploads (10 concurrent requests)",
       "Added automatic retry queue for failed images",
@@ -72,11 +88,10 @@ export default function ChangelogPage() {
               <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-lg font-bold">v{release.version}</span>
-                  <span className="text-xs px-2 py-1 rounded-md bg-primary/10 text-primary font-medium">
-                    {release.version === changelog[0].version ? "Latest" : "Previous"}
+                  <span className="text-xs px-2 py-1 rounded-md bg-white/5 text-muted-foreground font-medium">
+                    {release.date}
                   </span>
                 </div>
-                <span className="text-sm text-muted-foreground">{release.date}</span>
               </div>
               <div className="p-6">
                 <ul className="space-y-2">

@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const results: DuplicateResult[] = []
 
     for (const file of body.files) {
-      if (!file.filename || !file.date) {
+      if (!file.filename || !file.hash || !file.date) {
         results.push({
           filename: file.filename || 'unknown',
           isDuplicate: false,
@@ -39,13 +39,13 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      // Query for existing file with same name on same day
+      // Query for existing file with same hash on same day (content-based deduplication)
       const existingRecords = await db
         .select()
         .from(uploadHistory)
         .where(
           and(
-            eq(uploadHistory.fileName, file.filename),
+            eq(uploadHistory.fileHash, file.hash),
             sql`DATE(${uploadHistory.processedAt}) = ${file.date}`
           )
         )

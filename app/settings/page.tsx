@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { AlertTriangle, Trash2, TrendingUp, Database, HardDrive, Settings, Clock, Flame, Brain, DollarSign, FileText, Lock, ArrowRight, AlertCircle } from "lucide-react"
+import { AlertTriangle, Trash2, Database, HardDrive, Settings, Clock, Flame, Brain, DollarSign, FileText, Lock, ArrowRight, AlertCircle, Server } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -46,12 +46,10 @@ export default function SettingsPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false)
 
   // Settings state
-  const [trendPeriod, setTrendPeriod] = useState("14")
   const [clearPeriod, setClearPeriod] = useState("90")
   const [stats, setStats] = useState<Stats | null>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(true)
   const [isLoadingSettings, setIsLoadingSettings] = useState(true)
-  const [isSavingTrendPeriod, setIsSavingTrendPeriod] = useState(false)
   const [isClearingHistory, setIsClearingHistory] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false)
@@ -114,20 +112,12 @@ export default function SettingsPage() {
   useEffect(() => {
     async function fetchSettings() {
       try {
-        // Fetch trend period, AI model settings, and usage tracking in parallel
-        const [trendResponse, modelResponse, providersResponse, usageResponse] = await Promise.all([
-          fetch('/api/settings/trend_period_days'),
+        // Fetch AI model settings, providers, and usage tracking in parallel
+        const [modelResponse, providersResponse, usageResponse] = await Promise.all([
           fetch('/api/settings/ai_extraction_model'),
           fetch('/api/ai-providers'),
           fetch('/api/settings/usage_tracking'),
         ])
-
-        if (trendResponse.ok) {
-          const data = await trendResponse.json()
-          if (data.value?.days) {
-            setTrendPeriod(data.value.days.toString())
-          }
-        }
 
         if (modelResponse.ok) {
           const data = await modelResponse.json()
@@ -178,26 +168,6 @@ export default function SettingsPage() {
       toast.error('Failed to load statistics')
     } finally {
       setIsLoadingStats(false)
-    }
-  }
-
-  // Auto-save trend period when changed
-  async function handleTrendPeriodChange(value: string | null) {
-    if (!value) return
-    setTrendPeriod(value)
-    setIsSavingTrendPeriod(true)
-    try {
-      const response = await fetch('/api/settings/trend_period_days', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: parseInt(value) }),
-      })
-      if (!response.ok) throw new Error('Failed to save setting')
-    } catch (error) {
-      console.error('Failed to save trend period:', error)
-      toast.error('Failed to save trend period')
-    } finally {
-      setIsSavingTrendPeriod(false)
     }
   }
 
@@ -436,144 +406,158 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6">
-        {/* Trend Period Setting */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="p-6">
-            <div className="flex items-start gap-4">
-              <div className="size-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0">
-                <TrendingUp className="size-5 text-primary" />
+        {/* AI Extraction & Server Memory - Side by Side */}
+        <div className="grid grid-cols-2 gap-6">
+          {/* AI Extraction Model */}
+          <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="size-10 rounded-xl bg-gradient-to-br from-chart-5/20 to-chart-5/5 flex items-center justify-center shrink-0">
+                  <Brain className="size-5 text-chart-5" />
+                </div>
+                <h2 className="font-semibold">AI Extraction Model</h2>
               </div>
-              <div className="flex-1">
-                <h2 className="font-semibold mb-1">Historical Trend Period</h2>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Time period used for calculating price averages in Market Explorer
-                </p>
-                <div className="flex items-center gap-4">
-                  <Select value={trendPeriod} onValueChange={handleTrendPeriodChange} disabled={isLoadingSettings || isSavingTrendPeriod}>
-                    <SelectTrigger className="w-[180px] bg-white/[0.03] border-white/5">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="7">Last 7 days</SelectItem>
-                      <SelectItem value="14">Last 14 days</SelectItem>
-                      <SelectItem value="30">Last 30 days</SelectItem>
-                      <SelectItem value="60">Last 60 days</SelectItem>
-                      <SelectItem value="90">Last 90 days</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <span className="text-sm text-muted-foreground">
-                    Sparklines will show {trendPeriod}-day trends
-                  </span>
+              <div className="mb-4">
+                <Select value={aiModel} onValueChange={handleAiModelChange} disabled={isLoadingSettings || isSavingAiModel}>
+                  <SelectTrigger className="w-full bg-white/[0.03] border-white/5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AI_MODELS.map((model) => {
+                      const available = isModelAvailable(model.value)
+                      return (
+                        <SelectItem
+                          key={model.value}
+                          value={model.value}
+                          disabled={!available}
+                          className={cn(!available && "opacity-50")}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{model.label}</span>
+                            <span className="text-xs text-muted-foreground">({model.provider})</span>
+                            {!available && <span className="text-xs text-muted-foreground">Disabled</span>}
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div className="text-muted-foreground/70">Parallel processing</div>
+                  <div className="font-mono text-foreground">{getModelConfig(aiModel).maxConcurrent} concurrent</div>
+
+                  <div className="text-muted-foreground/70">Chunk delay</div>
+                  <div className="font-mono text-foreground">{getModelConfig(aiModel).delayBetweenMs}ms</div>
+
+                  <div className="text-muted-foreground/70">Prompt caching</div>
+                  <div className="font-mono text-foreground">Enabled (~90% saved)</div>
+
+                  <div className="text-muted-foreground/70">Cache TTL</div>
+                  <div className="font-mono text-foreground">1 hour</div>
+
+                  <div className="text-muted-foreground/70">Failed retry</div>
+                  <div className="font-mono text-foreground">End of batch</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Server Memory Management */}
+          <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="size-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 flex items-center justify-center shrink-0">
+                  <Server className="size-5 text-cyan-500" />
+                </div>
+                <h2 className="font-semibold">Server Memory</h2>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div className="text-muted-foreground/70">Storage</div>
+                  <div className="font-mono text-foreground">In-memory only</div>
+
+                  <div className="text-muted-foreground/70">Cleanup (success)</div>
+                  <div className="font-mono text-foreground">Immediate</div>
+
+                  <div className="text-muted-foreground/70">Cleanup (failure)</div>
+                  <div className="font-mono text-foreground">Immediate</div>
+
+                  <div className="text-muted-foreground/70">Cleanup (duplicate)</div>
+                  <div className="font-mono text-foreground">Immediate</div>
+
+                  <div className="text-muted-foreground/70">Abandoned TTL</div>
+                  <div className="font-mono text-foreground">60 minutes</div>
+
+                  <div className="text-muted-foreground/70">Background sweep</div>
+                  <div className="font-mono text-foreground">Every 2 min</div>
+
+                  <div className="text-muted-foreground/70">Duplicate check</div>
+                  <div className="font-mono text-foreground">Hash + date</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* AI Extraction Model */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="p-6">
-            <div className="flex items-start gap-4">
-              <div className="size-12 rounded-xl bg-gradient-to-br from-chart-5/20 to-chart-5/5 flex items-center justify-center shrink-0">
-                <Brain className="size-5 text-chart-5" />
-              </div>
-              <div className="flex-1">
-                <h2 className="font-semibold mb-1">AI Extraction Model</h2>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Model used for extracting marketplace data from screenshots
-                </p>
-                <div className="flex items-center gap-4">
-                  <Select value={aiModel} onValueChange={handleAiModelChange} disabled={isLoadingSettings || isSavingAiModel}>
-                    <SelectTrigger className="w-[280px] bg-white/[0.03] border-white/5">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {AI_MODELS.map((model) => {
-                        const available = isModelAvailable(model.value)
-                        return (
-                          <SelectItem
-                            key={model.value}
-                            value={model.value}
-                            disabled={!available}
-                            className={cn(!available && "opacity-50")}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span>{model.label}</span>
-                              <span className="text-xs text-muted-foreground">({model.provider})</span>
-                              {!available && <span className="text-xs text-muted-foreground">Disabled</span>}
-                            </div>
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
+        {/* Estimated Costs & Retention - Side by Side */}
+        <div className="grid grid-cols-2 gap-6">
+          {/* Estimated Costs */}
+          <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+            <div className="p-6 h-full">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="size-10 rounded-xl bg-gradient-to-br from-green-500/20 to-green-500/5 flex items-center justify-center shrink-0">
+                  <DollarSign className="size-5 text-green-500" />
                 </div>
-                <div className="mt-3 p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    <div className="text-muted-foreground/70">Parallel processing</div>
-                    <div className="font-mono text-foreground">{getModelConfig(aiModel).maxConcurrent} concurrent requests</div>
-
-                    <div className="text-muted-foreground/70">Delay between chunks</div>
-                    <div className="font-mono text-foreground">{getModelConfig(aiModel).delayBetweenMs}ms</div>
-
-                    <div className="text-muted-foreground/70">Max output tokens</div>
-                    <div className="font-mono text-foreground">8,192</div>
-
-                    <div className="text-muted-foreground/70">Prompt caching</div>
-                    <div className="font-mono text-foreground">Enabled (saves ~90% input tokens)</div>
-
-                    <div className="text-muted-foreground/70">Cache TTL</div>
-                    <div className="font-mono text-foreground">1 hour</div>
-
-                    <div className="text-muted-foreground/70">Failed image retry</div>
-                    <div className="font-mono text-foreground">Automatic (end of batch)</div>
-                  </div>
-                  <p className="text-xs text-muted-foreground/50 pt-1 border-t border-white/5">
-                    {getModelConfig(aiModel).maxConcurrent} images per chunk with staggered starts for optimal throughput
+                <h2 className="font-semibold">Estimated Costs</h2>
+              </div>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Images</p>
+                  <p className="text-lg font-bold font-mono">{usageData.totalImages.toLocaleString()}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tokens</p>
+                  <p className="text-lg font-bold font-mono">{(usageData.totalTokens / 1000).toFixed(1)}k</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Est. Cost</p>
+                  <p className="text-lg font-bold font-mono text-green-400">
+                    ${((usageData.totalTokens / 1_000_000) * 0.30).toFixed(4)}
                   </p>
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground/50">
+                Gemini 3 Flash ~$0.30/1M tokens
+              </p>
             </div>
           </div>
-        </div>
 
-        {/* Estimated Costs */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="p-6">
-            <div className="flex items-start gap-4">
-              <div className="size-12 rounded-xl bg-gradient-to-br from-green-500/20 to-green-500/5 flex items-center justify-center shrink-0">
-                <DollarSign className="size-5 text-green-500" />
-              </div>
-              <div className="flex-1">
-                <h2 className="font-semibold mb-1">Estimated Costs</h2>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Cumulative usage tracking for Gemini 3 Flash. Persists through database clears.
-                </p>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Images</p>
-                    <p className="text-xl font-bold font-mono">{usageData.totalImages.toLocaleString()}</p>
-                  </div>
-                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tokens</p>
-                    <p className="text-xl font-bold font-mono">{(usageData.totalTokens / 1000).toFixed(1)}k</p>
-                  </div>
-                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Est. Cost</p>
-                    <p className="text-xl font-bold font-mono text-green-400">
-                      ${((usageData.totalTokens / 1_000_000) * 0.30).toFixed(4)}
-                    </p>
-                  </div>
+          {/* Upload History Retention */}
+          <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+            <div className="p-6 h-full">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="size-10 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
+                  <HardDrive className="size-5 text-muted-foreground" />
                 </div>
-                <p className="mt-3 text-xs text-muted-foreground/50">
-                  Based on Gemini 3 Flash blended rate of ~$0.30/1M tokens (input $0.15 + output $0.60 weighted)
-                </p>
-                {usageData.lastUpdated && (
-                  <p className="mt-1 text-xs text-muted-foreground/40">
-                    Last updated: {new Date(usageData.lastUpdated).toLocaleString()}
-                  </p>
-                )}
+                <h2 className="font-semibold">Upload History Retention</h2>
               </div>
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div className="text-muted-foreground/70">Retention period</div>
+                  <div className="font-mono text-foreground">6 months</div>
+
+                  <div className="text-muted-foreground/70">Purpose</div>
+                  <div className="font-mono text-foreground">Price trends</div>
+
+                  <div className="text-muted-foreground/70">Auto cleanup</div>
+                  <div className="font-mono text-foreground">Enabled</div>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground/50">
+                Price history older than 6 months is automatically removed
+              </p>
             </div>
           </div>
         </div>
@@ -604,75 +588,6 @@ export default function SettingsPage() {
                 </ScrollArea>
                 <p className="mt-3 text-xs text-muted-foreground/50">
                   ~1,100 tokens • Cached for 1 hour per session
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Data Statistics */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3">
-            <div className="size-8 rounded-lg bg-white/5 flex items-center justify-center">
-              <Database className="size-4 text-muted-foreground" />
-            </div>
-            <h2 className="font-semibold">Data Statistics</h2>
-          </div>
-          <div className="p-6">
-            {isLoadingStats ? (
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="p-4 rounded-xl bg-white/[0.03] border border-white/5 h-24 animate-pulse" />
-                ))}
-              </div>
-            ) : stats ? (
-              <>
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Listings</p>
-                    <p className="text-3xl font-bold font-mono">{stats.totalListings.toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Total Items</p>
-                    <p className="text-3xl font-bold font-mono">{stats.totalItems.toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Uploads</p>
-                    <p className="text-3xl font-bold font-mono">{stats.totalUploads.toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Avg Items/Upload</p>
-                    <p className="text-3xl font-bold font-mono">{stats.avgItemsPerUpload.toFixed(1)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="size-4" />
-                  <span>Oldest record: {formatTimeAgo(stats.oldestUpload)}</span>
-                </div>
-              </>
-            ) : (
-              <div className="text-sm text-muted-foreground">Failed to load statistics</div>
-            )}
-          </div>
-        </div>
-
-        {/* Upload History Retention */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="p-6">
-            <div className="flex items-start gap-4">
-              <div className="size-12 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
-                <HardDrive className="size-5 text-muted-foreground" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <h2 className="font-semibold">Upload History Retention</h2>
-                  <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-primary/10 text-primary">
-                    6 months
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Upload history is retained for 6 months to detect duplicate screenshots.
-                  Older records are automatically cleaned up.
                 </p>
               </div>
             </div>
@@ -844,25 +759,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* About */}
-        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="size-12 rounded-xl bg-gradient-to-br from-primary to-chart-5 flex items-center justify-center">
-                  <Flame className="size-6 text-primary-foreground" />
-                </div>
-                <div>
-                  <p className="font-semibold">Fallen Market</p>
-                  <p className="text-sm text-muted-foreground">Marketplace intelligence for Ashes of Creation</p>
-                </div>
-              </div>
-              <span className="text-xs font-mono px-3 py-1.5 rounded-lg bg-white/5 text-muted-foreground">
-                v1.0.0
-              </span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )
