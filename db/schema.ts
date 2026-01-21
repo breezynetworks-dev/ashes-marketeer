@@ -51,6 +51,7 @@ export const marketplaceListings = pgTable(
     priceCopper: integer('price_copper').notNull(),
     totalPriceCopper: integer('total_price_copper').notNull(),
     node: nodeEnum('node').notNull(),
+    uploadedBy: varchar('uploaded_by', { length: 100 }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -76,12 +77,11 @@ export const uploadHistory = pgTable(
     tokenUsage: integer('token_usage').notNull(),
     status: uploadStatusEnum('status').notNull(),
     errorMessage: text('error_message'),
+    uploadedBy: varchar('uploaded_by', { length: 100 }),
+    node: nodeEnum('node'),
   },
   (table) => ({
-    fileNameDateIdx: index('file_name_date_idx').on(
-      table.fileName,
-      sql`DATE(${table.processedAt})`
-    ),
+    fileHashIdx: index('file_hash_idx').on(table.fileHash),
     processedAtIdx: index('processed_at_idx').on(table.processedAt.desc()),
   })
 )

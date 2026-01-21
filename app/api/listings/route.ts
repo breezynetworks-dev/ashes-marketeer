@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
         total: listing.totalPriceCopper,
       },
       node: listing.node,
+      uploadedBy: listing.uploadedBy,
       timestamp: listing.createdAt,
     }))
 

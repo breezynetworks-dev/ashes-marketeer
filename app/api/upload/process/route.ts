@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createBatch, type FileToProcess } from '@/lib/batch-processor'
+import { createBatch, type FileToProcess, type NodeType } from '@/lib/batch-processor'
 
 interface ProcessRequest {
   files: FileToProcess[]
+  uploadedBy?: string
+  node?: NodeType
 }
 
 export async function POST(request: NextRequest) {
@@ -26,8 +28,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create batch
-    const batchId = createBatch(body.files)
+    // Create batch with uploader info
+    const batchId = createBatch(body.files, body.uploadedBy, body.node)
 
     // Don't start processing here - SSE endpoint will start it
     // This allows SSE clients to receive all events from the beginning

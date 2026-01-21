@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, Pencil, Trash2, MoreHorizontal, X, Check, LayoutGrid, Filter, SlidersHorizontal, Upload } from "lucide-react"
@@ -14,12 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
@@ -37,16 +31,18 @@ type APIListing = {
     total: number
   }
   node: string
+  uploadedBy: string | null
   timestamp: string
 }
 
-const rarityConfig: Record<string, { bg: string; text: string; glow: string }> = {
-  common: { bg: "bg-gray-500/10", text: "text-gray-400", glow: "" },
-  uncommon: { bg: "bg-emerald-500/10", text: "text-emerald-400", glow: "" },
-  rare: { bg: "bg-blue-500/10", text: "text-blue-400", glow: "shadow-[0_0_12px_-3px] shadow-blue-500/30" },
-  heroic: { bg: "bg-purple-500/10", text: "text-purple-400", glow: "shadow-[0_0_12px_-3px] shadow-purple-500/30" },
-  epic: { bg: "bg-fuchsia-500/10", text: "text-fuchsia-400", glow: "shadow-[0_0_12px_-3px] shadow-fuchsia-500/30" },
-  legendary: { bg: "bg-orange-500/10", text: "text-orange-400", glow: "shadow-[0_0_15px_-3px] shadow-orange-500/40" },
+const rarityConfig: Record<string, { bg: string; text: string }> = {
+  poor: { bg: "bg-rarity-poor", text: "text-white" },
+  common: { bg: "bg-rarity-common", text: "text-black" },
+  uncommon: { bg: "bg-rarity-uncommon", text: "text-white" },
+  rare: { bg: "bg-rarity-rare", text: "text-white" },
+  heroic: { bg: "bg-rarity-heroic", text: "text-white" },
+  epic: { bg: "bg-rarity-epic", text: "text-white" },
+  legendary: { bg: "bg-rarity-legendary", text: "text-white" },
 }
 
 // Format price value to gold/silver display
@@ -187,14 +183,13 @@ function Sparkline({ data, trend, unit = "s" }: { data: number[]; trend: "up" | 
 }
 
 function RarityBadge({ rarity }: { rarity: string }) {
-  const config = rarityConfig[rarity] || rarityConfig.common
+  const config = rarityConfig[rarity.toLowerCase()] || rarityConfig.common
   return (
     <span
       className={cn(
         "inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium capitalize",
         config.bg,
-        config.text,
-        config.glow
+        config.text
       )}
       aria-label={`Rarity: ${rarity}`}
     >
@@ -233,7 +228,7 @@ function formatCopperDifference(copperAmount: number): { amount: number; unit: s
 function TrendIndicator({ trend }: { trend: { direction: string; amount: number; unit: string; history: number[] } | null }) {
   if (!trend) {
     return (
-      <span className="text-muted-foreground/50 text-xs" aria-label="No price history available">
+      <span className="text-muted-foreground/50 text-sm" aria-label="No price history available">
         No history
       </span>
     )
@@ -281,7 +276,11 @@ function formatRelativeTime(dateInput: Date | string): string {
   return date.toLocaleDateString()
 }
 
-export default function MarketPage() {
+function formatStoreName(name: string): string {
+  return name.replace(/'s Storefront$/i, '').replace(/s Storefront$/i, '')
+}
+
+function MarketPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -293,9 +292,10 @@ export default function MarketPage() {
   const [editValues, setEditValues] = useState<Partial<APIListing> | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
-  const [trendPeriod, setTrendPeriod] = useState<number>(30)
+  const [trendPeriod, setTrendPeriod] = useState<number>(14)
   const [isLoadingSettings, setIsLoadingSettings] = useState(true)
   const [trendData, setTrendData] = useState<Record<string, { direction: string; amount: number; unit: string; history: number[] } | null>>({})
+  const editingRowRef = useRef<HTMLDivElement>(null)
 
   // Get filters from URL params
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || "")
@@ -336,6 +336,22 @@ export default function MarketPage() {
     }, 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
+
+  // Click outside to cancel editing
+  useEffect(() => {
+    if (!editingId) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (editingRowRef.current && !editingRowRef.current.contains(e.target as Node)) {
+        setEditingId(null)
+        setEditValues(null)
+        setValidationError(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [editingId])
 
   // Update URL query params when filters change
   useEffect(() => {
@@ -485,7 +501,8 @@ export default function MarketPage() {
     }
   }
 
-  const handleTrendPeriodChange = async (value: string) => {
+  const handleTrendPeriodChange = async (value: string | null) => {
+    if (!value) return
     const newPeriod = parseInt(value, 10)
     setTrendPeriod(newPeriod)
 
@@ -505,6 +522,14 @@ export default function MarketPage() {
       console.error('Failed to update trend period:', error)
       toast.error('Failed to save trend period setting')
     }
+  }
+
+  const handleRarityFilterChange = (value: string | null) => {
+    if (value) setRarityFilter(value)
+  }
+
+  const handleNodeFilterChange = (value: string | null) => {
+    if (value) setNodeFilter(value)
   }
 
   const startEditing = (listing: APIListing) => {
@@ -697,32 +722,10 @@ export default function MarketPage() {
             <p className="text-sm text-muted-foreground">Search and analyze marketplace listings</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          {/* Time Period Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground" id="trend-period-label">Trend Period:</span>
-            <Select
-              value={trendPeriod.toString()}
-              onValueChange={handleTrendPeriodChange}
-              disabled={isLoadingSettings}
-            >
-              <SelectTrigger className="w-[120px] h-9 bg-white/[0.03] border-white/5" aria-labelledby="trend-period-label">
-                <SelectValue placeholder="Select days" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">7 days</SelectItem>
-                <SelectItem value="14">14 days</SelectItem>
-                <SelectItem value="30">30 days</SelectItem>
-                <SelectItem value="60">60 days</SelectItem>
-                <SelectItem value="90">90 days</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>{isLoading ? '...' : `${total} listing${total !== 1 ? 's' : ''}`}</span>
-          </div>
-        </div>
+        <Button render={<Link href="/upload" />} className="h-9 px-4 rounded-xl bg-gradient-to-r from-primary to-chart-3 hover:opacity-90 glow-primary-sm">
+          <Upload className="size-4 mr-2" />
+          Upload
+        </Button>
       </div>
 
       {/* Search and Filters */}
@@ -734,21 +737,21 @@ export default function MarketPage() {
             placeholder="Search items, stores..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-11 h-11 bg-white/[0.03] border-white/5 focus:border-primary/50 focus:bg-white/[0.05]"
+            className="pl-11 h-11 rounded-lg bg-white/[0.03] border-white/5 focus:border-primary/50 focus:bg-white/[0.05]"
             aria-label="Search listings"
           />
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/5">
+          <div className="flex items-center gap-1 px-3 h-11 rounded-lg bg-white/[0.03] border border-white/5">
             <Filter className="size-4 text-muted-foreground mr-1" />
             {/* Rarity Filter */}
-            <Select value={rarityFilter} onValueChange={setRarityFilter}>
+            <Select value={rarityFilter} onValueChange={handleRarityFilterChange}>
               <SelectTrigger className="w-[120px] h-7 border-0 bg-transparent text-sm" aria-label="Filter by rarity">
-                <SelectValue placeholder="Rarity" />
+                <SelectValue placeholder="Rarity">{rarityFilter === 'all' ? 'Rarity' : rarityFilter.charAt(0).toUpperCase() + rarityFilter.slice(1)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Rarities</SelectItem>
+                <SelectItem value="all">Rarity</SelectItem>
                 <SelectItem value="common">Common</SelectItem>
                 <SelectItem value="uncommon">Uncommon</SelectItem>
                 <SelectItem value="rare">Rare</SelectItem>
@@ -761,17 +764,37 @@ export default function MarketPage() {
             <div className="w-px h-4 bg-white/10" />
 
             {/* Node Filter */}
-            <Select value={nodeFilter} onValueChange={setNodeFilter}>
+            <Select value={nodeFilter} onValueChange={handleNodeFilterChange}>
               <SelectTrigger className="w-[120px] h-7 border-0 bg-transparent text-sm" aria-label="Filter by node">
-                <SelectValue placeholder="Node" />
+                <SelectValue placeholder="Node">{nodeFilter === 'all' ? 'Node' : nodeFilter}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Nodes</SelectItem>
+                <SelectItem value="all">Node</SelectItem>
                 <SelectItem value="New Aela">New Aela</SelectItem>
                 <SelectItem value="Halcyon">Halcyon</SelectItem>
                 <SelectItem value="Joeva">Joeva</SelectItem>
                 <SelectItem value="Miraleth">Miraleth</SelectItem>
                 <SelectItem value="Winstead">Winstead</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="w-px h-4 bg-white/10" />
+
+            {/* Trend Period */}
+            <Select
+              value={trendPeriod.toString()}
+              onValueChange={handleTrendPeriodChange}
+              disabled={isLoadingSettings}
+            >
+              <SelectTrigger className="w-[100px] h-7 border-0 bg-transparent text-sm" aria-label="Trend period">
+                <SelectValue placeholder="Trend">Trend</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">7 days</SelectItem>
+                <SelectItem value="14">14 days</SelectItem>
+                <SelectItem value="30">30 days</SelectItem>
+                <SelectItem value="60">60 days</SelectItem>
+                <SelectItem value="90">90 days</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -805,15 +828,16 @@ export default function MarketPage() {
 
       {/* Data Table */}
       <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
-        <div className="grid grid-cols-[minmax(160px,auto)_minmax(180px,auto)_100px_120px_minmax(200px,auto)_100px_70px_1fr_40px] gap-x-8">
+        <div className="grid grid-cols-[minmax(180px,auto)_100px_120px_minmax(200px,auto)_minmax(160px,auto)_100px_100px_70px_1fr_72px] gap-x-8">
           {/* Table Header */}
           <div className="col-span-full grid grid-cols-subgrid gap-x-8 px-6 py-4 border-b border-white/5 bg-white/[0.02] items-center">
-            <div className="pr-4"><SortableHeader column="storeName">Store</SortableHeader></div>
-            <div className="pr-4"><SortableHeader column="itemName">Item</SortableHeader></div>
+            <div className="pr-4"><SortableHeader column="itemName">Item Name</SortableHeader></div>
             <div className="px-4 flex justify-center"><SortableHeader column="quantity">Quantity</SortableHeader></div>
             <div className="px-4"><SortableHeader column="rarity">Rarity</SortableHeader></div>
             <div className="px-4 flex justify-center"><SortableHeader column="price">Price</SortableHeader></div>
+            <div className="pr-4"><SortableHeader column="storeName">Store</SortableHeader></div>
             <div className="px-2"><SortableHeader column="node">Node</SortableHeader></div>
+            <div className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Uploader</div>
             <div className="px-2 flex justify-center"><SortableHeader column="timestamp">Time</SortableHeader></div>
             <div className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Trend</div>
             <div />
@@ -827,7 +851,6 @@ export default function MarketPage() {
                 key={`skeleton-${index}`}
                 className="col-span-full grid grid-cols-subgrid gap-x-8 px-6 py-5 items-center border-b border-white/5"
               >
-                <Skeleton className="h-4 w-32" />
                 <Skeleton className="h-4 w-40" />
                 <div className="flex justify-center">
                   <Skeleton className="h-4 w-12" />
@@ -836,16 +859,18 @@ export default function MarketPage() {
                 <div className="flex justify-center">
                   <Skeleton className="h-4 w-16" />
                 </div>
+                <Skeleton className="h-4 w-32" />
                 <Skeleton className="h-6 w-20" />
+                <Skeleton className="h-4 w-16" />
                 <div className="flex justify-center">
                   <Skeleton className="h-4 w-8" />
                 </div>
                 <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-6 w-6" />
+                <Skeleton className="h-6 w-16" />
               </div>
             ))
           ) : listings.length === 0 ? (
-            <div className="col-span-9 px-6 py-16 text-center">
+            <div className="col-span-10 px-6 py-16 text-center">
               {searchQuery || rarityFilter !== 'all' || nodeFilter !== 'all' ? (
                 // No search results
                 <>
@@ -877,11 +902,12 @@ export default function MarketPage() {
                   <p className="text-xs text-muted-foreground/50 mb-6">
                     Upload screenshots to start tracking prices
                   </p>
-                  <Button asChild className="bg-primary/10 hover:bg-primary/20 text-primary border-0">
-                    <Link href="/upload">
-                      <Upload className="size-4 mr-2" />
-                      Go to Upload
-                    </Link>
+                  <Button
+                    render={<Link href="/upload" />}
+                    className="bg-primary/10 hover:bg-primary/20 text-primary border-0"
+                  >
+                    <Upload className="size-4 mr-2" />
+                    Go to Upload
                   </Button>
                 </>
               )}
@@ -894,104 +920,51 @@ export default function MarketPage() {
               return (
                 <div
                   key={listing.id}
+                  ref={isEditing ? editingRowRef : null}
                   className={cn(
                     "col-span-full grid grid-cols-subgrid gap-x-8 px-6 py-5 items-center border-b border-white/5 hover:bg-white/[0.02] transition-colors group",
                     isEditing && "bg-primary/5"
                   )}
                 >
-                  {/* Store */}
-                  <div className="text-sm text-muted-foreground truncate pr-4">
-                    {isEditing ? (
-                      <Input
-                        value={editValues?.seller || ''}
-                        onChange={(e) => updateEditValue('seller', e.target.value)}
-                        onBlur={handleSave}
-                        onKeyDown={handleKeyDown}
-                        className="h-8 bg-white/5"
-                        disabled={isSaving}
-                        aria-label="Store name"
-                      />
-                    ) : (
-                      listing.seller
-                    )}
-                  </div>
-
                   {/* Item */}
-                  <div className="text-sm text-muted-foreground truncate pr-4">
-                    {isEditing ? (
-                      <Input
-                        value={editValues?.item || ''}
-                        onChange={(e) => updateEditValue('item', e.target.value)}
-                        onBlur={handleSave}
-                        onKeyDown={handleKeyDown}
-                        className="h-8 bg-white/5"
-                        disabled={isSaving}
-                        aria-label="Item name"
-                      />
-                    ) : (
-                      listing.item
-                    )}
+                  <div className="truncate pr-4">
+                    <span className="text-sm text-muted-foreground">{listing.item}</span>
                   </div>
 
                   {/* Quantity */}
-                  <div className="text-center font-mono text-sm px-4">
+                  <div className="text-center px-4">
                     {isEditing ? (
                       <Input
                         type="number"
                         min="1"
                         value={editValues?.quantity || 0}
                         onChange={(e) => updateEditValue('quantity', parseInt(e.target.value) || 0)}
-                        onBlur={handleSave}
                         onKeyDown={handleKeyDown}
-                        className="h-8 w-20 text-center bg-white/5"
+                        className="h-8 w-20 rounded-lg text-center bg-white/5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         disabled={isSaving}
                         aria-label="Quantity"
                       />
                     ) : (
-                      <span className="text-muted-foreground">{listing.quantity}</span>
+                      <span className="text-sm text-muted-foreground">{listing.quantity}</span>
                     )}
                   </div>
 
                   {/* Rarity */}
                   <div className="px-4">
-                    {isEditing ? (
-                      <Select
-                        value={editValues?.rarity || 'common'}
-                        onValueChange={(value) => {
-                          updateEditValue('rarity', value)
-                          setTimeout(handleSave, 0)
-                        }}
-                        disabled={isSaving}
-                      >
-                        <SelectTrigger className="h-8 bg-white/5" aria-label="Select rarity">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="common">Common</SelectItem>
-                          <SelectItem value="uncommon">Uncommon</SelectItem>
-                          <SelectItem value="rare">Rare</SelectItem>
-                          <SelectItem value="heroic">Heroic</SelectItem>
-                          <SelectItem value="epic">Epic</SelectItem>
-                          <SelectItem value="legendary">Legendary</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <RarityBadge rarity={listing.rarity} />
-                    )}
+                    <RarityBadge rarity={listing.rarity} />
                   </div>
 
                   {/* Price */}
-                  <div className="px-4">
+                  <div className="px-4 flex justify-center">
                     {isEditing ? (
-                      <div className="flex items-center gap-0.5 flex-wrap">
+                      <div className="flex items-center justify-center gap-0.5 flex-wrap">
                         <Input
                           type="number"
                           min="0"
                           value={editValues?.prices?.gold || 0}
                           onChange={(e) => updatePriceValue('gold', parseInt(e.target.value) || 0)}
-                          onBlur={handleSave}
                           onKeyDown={handleKeyDown}
-                          className="h-8 w-14 text-right bg-white/5 text-xs"
+                          className="h-8 w-14 rounded-lg text-right bg-white/5 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           disabled={isSaving}
                           aria-label="Gold price"
                         />
@@ -1002,9 +975,8 @@ export default function MarketPage() {
                           max="99"
                           value={editValues?.prices?.silver || 0}
                           onChange={(e) => updatePriceValue('silver', parseInt(e.target.value) || 0)}
-                          onBlur={handleSave}
                           onKeyDown={handleKeyDown}
-                          className="h-8 w-12 text-right bg-white/5 text-xs"
+                          className="h-8 w-12 rounded-lg text-right bg-white/5 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           disabled={isSaving}
                           aria-label="Silver price"
                         />
@@ -1015,9 +987,8 @@ export default function MarketPage() {
                           max="99"
                           value={editValues?.prices?.copper || 0}
                           onChange={(e) => updatePriceValue('copper', parseInt(e.target.value) || 0)}
-                          onBlur={handleSave}
                           onKeyDown={handleKeyDown}
-                          className="h-8 w-12 text-right bg-white/5 text-xs"
+                          className="h-8 w-12 rounded-lg text-right bg-white/5 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           disabled={isSaving}
                           aria-label="Copper price"
                         />
@@ -1028,37 +999,27 @@ export default function MarketPage() {
                     )}
                   </div>
 
+                  {/* Store */}
+                  <div className="truncate pr-4">
+                    <span className="text-sm text-muted-foreground">{formatStoreName(listing.seller)}</span>
+                  </div>
+
                   {/* Node */}
                   <div className="px-2">
-                    {isEditing ? (
-                      <Select
-                        value={editValues?.node || 'New Aela'}
-                        onValueChange={(value) => {
-                          updateEditValue('node', value)
-                          setTimeout(handleSave, 0)
-                        }}
-                        disabled={isSaving}
-                      >
-                        <SelectTrigger className="h-8 bg-white/5" aria-label="Select node">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="New Aela">New Aela</SelectItem>
-                          <SelectItem value="Halcyon">Halcyon</SelectItem>
-                          <SelectItem value="Joeva">Joeva</SelectItem>
-                          <SelectItem value="Miraleth">Miraleth</SelectItem>
-                          <SelectItem value="Winstead">Winstead</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <span className="text-xs px-2 py-1 rounded-md bg-white/5 text-muted-foreground whitespace-nowrap">
-                        {listing.node}
-                      </span>
-                    )}
+                    <span className="text-sm px-2 py-1 rounded-md bg-white/5 text-muted-foreground whitespace-nowrap">
+                      {listing.node}
+                    </span>
+                  </div>
+
+                  {/* Uploaded By */}
+                  <div className="px-2">
+                    <span className="text-sm text-muted-foreground truncate block">
+                      {listing.uploadedBy || '—'}
+                    </span>
                   </div>
 
                   {/* Time */}
-                  <div className="text-center text-xs text-muted-foreground/60 font-mono whitespace-nowrap px-2">
+                  <div className="text-center text-sm text-muted-foreground/60 font-mono whitespace-nowrap px-2">
                     {formatRelativeTime(listing.timestamp)}
                   </div>
 
@@ -1068,9 +1029,19 @@ export default function MarketPage() {
                   </div>
 
                   {/* Actions */}
-                  <div>
+                  <div className="flex items-center gap-1">
                     {isEditing ? (
-                      <div className="flex items-center gap-1">
+                      <>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-300"
+                          onClick={cancelEditing}
+                          disabled={isSaving}
+                          aria-label="Cancel editing"
+                        >
+                          <X className="size-4" />
+                        </Button>
                         <Button
                           size="icon-xs"
                           variant="ghost"
@@ -1081,38 +1052,28 @@ export default function MarketPage() {
                         >
                           <Check className="size-4" />
                         </Button>
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          onClick={cancelEditing}
-                          disabled={isSaving}
-                          aria-label="Cancel editing"
-                        >
-                          <X className="size-4" />
-                        </Button>
-                      </div>
+                      </>
                     ) : (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-xs" className="text-muted-foreground/50 hover:text-foreground" aria-label="Open listing menu">
-                            <Pencil className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem onClick={() => startEditing(listing)} aria-label="Edit listing">
-                            <Pencil className="size-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(listing)}
-                            className="text-red-400 focus:text-red-400"
-                            aria-label="Delete listing"
-                          >
-                            <Trash2 className="size-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-muted-foreground/50 hover:text-foreground"
+                          onClick={() => startEditing(listing)}
+                          aria-label="Edit listing"
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-muted-foreground/50 hover:text-red-400"
+                          onClick={() => handleDelete(listing)}
+                          aria-label="Delete listing"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1136,9 +1097,32 @@ export default function MarketPage() {
             <span className="text-gray-300">Silver</span>
             <span className="text-amber-500">Copper</span>
           </div>
+          <div className="flex items-center gap-2">
+            <span>Listings:</span>
+            <span className="text-foreground">{total.toLocaleString()} (across {new Set(listings.map(l => l.node)).size} nodes)</span>
+          </div>
         </div>
-        <span>{trendPeriod}-day trend comparison</span>
+        <div className="flex items-center gap-2">
+          <span>Database Status:</span>
+          <div className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-emerald-400">Connected</span>
+        </div>
       </div>
     </div>
+  )
+}
+
+export default function MarketPage() {
+  return (
+    <Suspense fallback={
+      <div className="px-8 py-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-10 bg-white/5 rounded-lg w-1/4" />
+          <div className="h-64 bg-white/5 rounded-lg" />
+        </div>
+      </div>
+    }>
+      <MarketPageContent />
+    </Suspense>
   )
 }

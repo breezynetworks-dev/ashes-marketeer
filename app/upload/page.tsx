@@ -1,13 +1,25 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Upload, Zap, Layers, Package, AlertCircle, CheckCircle2, SkipForward, XCircle, ArrowRight, FileImage, Sparkles, Brain } from "lucide-react"
+import { Upload, Zap, Package, AlertCircle, CheckCircle2, SkipForward, XCircle, ArrowRight, FileImage, Sparkles, Brain, User, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { AI_MODELS, DEFAULT_MODEL, type AIModel, getModelConfig } from "@/lib/ai-extraction"
+
+const NODES = ["New Aela", "Halcyon", "Joeva", "Miraleth", "Winstead"] as const
+type NodeType = typeof NODES[number]
 
 type UploadState = "idle" | "uploading" | "checking" | "processing" | "error" | "complete"
 
@@ -50,6 +62,9 @@ export default function UploadPage() {
   const [totalFilesSelected, setTotalFilesSelected] = useState(0)
   const [duplicateCount, setDuplicateCount] = useState(0)
   const [connectionStatus, setConnectionStatus] = useState<string>("")
+  const [selectedModel, setSelectedModel] = useState<AIModel>(DEFAULT_MODEL)
+  const [characterName, setCharacterName] = useState<string>("")
+  const [selectedNode, setSelectedNode] = useState<NodeType | "">("")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -59,6 +74,8 @@ export default function UploadPage() {
     ? (progressData.batchCurrent / progressData.batchTotal) * 100
     : 0
 
+  const canUpload = characterName.trim() !== '' && selectedNode !== ''
+
   // Cleanup EventSource on unmount
   useEffect(() => {
     return () => {
@@ -67,6 +84,48 @@ export default function UploadPage() {
         eventSourceRef.current = null
       }
     }
+  }, [])
+
+  // Load character name and node from localStorage on mount
+  useEffect(() => {
+    const savedName = localStorage.getItem('uploadCharacterName')
+    const savedNode = localStorage.getItem('uploadNode')
+    if (savedName) setCharacterName(savedName)
+    if (savedNode && NODES.includes(savedNode as NodeType)) {
+      setSelectedNode(savedNode as NodeType)
+    }
+  }, [])
+
+  // Persist character name to localStorage
+  useEffect(() => {
+    if (characterName) {
+      localStorage.setItem('uploadCharacterName', characterName)
+    }
+  }, [characterName])
+
+  // Persist node to localStorage
+  useEffect(() => {
+    if (selectedNode) {
+      localStorage.setItem('uploadNode', selectedNode)
+    }
+  }, [selectedNode])
+
+  // Fetch selected AI model on mount
+  useEffect(() => {
+    async function fetchModel() {
+      try {
+        const response = await fetch('/api/settings/ai_extraction_model')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.value?.model) {
+            setSelectedModel(data.value.model as AIModel)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch AI model setting:', error)
+      }
+    }
+    fetchModel()
   }, [])
 
   const addThought = (type: ThoughtMessage["type"], message: string) => {
@@ -80,6 +139,16 @@ export default function UploadPage() {
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
+
+    // Validate required fields
+    if (!characterName.trim()) {
+      toast.error('Please enter your character name')
+      return
+    }
+    if (!selectedNode) {
+      toast.error('Please select a node')
+      return
+    }
 
     setState("uploading")
     setTotalFilesSelected(files.length)
@@ -148,7 +217,11 @@ export default function UploadPage() {
       const processResponse = await fetch('/api/upload/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: filesToProcess }),
+        body: JSON.stringify({
+          files: filesToProcess,
+          uploadedBy: characterName.trim(),
+          node: selectedNode,
+        }),
       })
 
       if (!processResponse.ok) {
@@ -176,8 +249,7 @@ export default function UploadPage() {
 
         switch (data.type) {
           case 'progress':
-            addThought('info', `Processing ${data.image}...`)
-            addThought('success', `✓ Extracted ${data.itemCount} items`)
+            addThought('success', `✓ ${data.image} → ${data.itemCount} items`)
             setProgressData(prev => ({
               ...prev,
               batchCurrent: data.batchIndex + 1,
@@ -190,6 +262,15 @@ export default function UploadPage() {
             addThought('info', data.summary)
             break
 
+          case 'cache':
+            if (data.status === 'created') {
+              addThought('success', '⚡ Prompt cache created')
+            } else if (data.status === 'reused') {
+              addThought('success', '⚡ Prompt cache active')
+            }
+            // Don't show anything for 'unavailable' - it's handled silently
+            break
+
           case 'duplicate':
             addThought('skip', `⊘ Skipped ${data.filename} (duplicate)`)
             setProgressData(prev => ({
@@ -199,12 +280,35 @@ export default function UploadPage() {
             }))
             break
 
+          case 'chunk-start':
+            addThought('info', `━━━ Chunk ${data.chunkIndex}/${data.totalChunks} (${data.filesInChunk} files) ━━━`)
+            break
+
+          case 'chunk-complete':
+            if (data.failedCount > 0) {
+              addThought('info', `Chunk done: ${data.successCount} succeeded, ${data.failedCount} queued for retry`)
+            }
+            break
+
+          case 'queued-for-retry':
+            addThought('retry', `⏳ ${data.filename} → queued for retry`)
+            break
+
+          case 'retry-phase':
+            addThought('info', `━━━ Retry Phase (${data.failedCount} failed) ━━━`)
+            break
+
           case 'retry':
-            addThought('retry', `↻ Retrying ${data.filename} (attempt ${data.attempt}/${data.maxAttempts})`)
-            toast.loading(`AI service rate limited, retrying... (${data.attempt}/${data.maxAttempts})`, {
-              id: `retry-${data.filename}`,
-              duration: 2000,
-            })
+            addThought('retry', `↻ Retrying ${data.filename}...`)
+            break
+
+          case 'retry-complete':
+            if (data.recoveredCount > 0 || data.permanentFailures > 0) {
+              const msg = data.permanentFailures > 0
+                ? `Retry complete: ${data.recoveredCount} recovered, ${data.permanentFailures} failed`
+                : `Retry complete: ${data.recoveredCount} recovered`
+              addThought(data.permanentFailures > 0 ? 'error' : 'success', msg)
+            }
             break
 
           case 'error':
@@ -214,8 +318,11 @@ export default function UploadPage() {
               setErrorMessage(data.message)
               setErrorFilename('System Error')
               eventSource.close()
+            } else if (data.message.includes('Failed permanently')) {
+              // Permanent failure from retry phase - just log it, don't stop
+              addThought('error', `✗ ${data.filename} failed permanently`)
             } else {
-              // File-specific error - show error card
+              // File-specific error during main processing - show error card
               setState('error')
               setErrorMessage(data.message)
               setErrorFilename(data.filename)
@@ -231,7 +338,11 @@ export default function UploadPage() {
               tokens: data.totalTokens,
               duplicatesSkipped: data.skippedCount,
             }))
-            setConnectionStatus(`Processing complete. Extracted ${data.totalItems} items`)
+            const summary = data.failedCount > 0
+              ? `Complete: ${data.totalItems} items, ${data.failedCount} failed`
+              : `Complete: ${data.totalItems} items extracted`
+            addThought('success', `✓ ${summary}`)
+            setConnectionStatus(summary)
             eventSource.close()
             break
         }
@@ -357,28 +468,70 @@ export default function UploadPage() {
 
       {/* Main Content */}
       <div className="space-y-6">
+        {/* Character Name and Node Selection - Always visible when idle */}
+        {state === "idle" && (
+          <div className="grid grid-cols-2 gap-4">
+            {/* Uploader */}
+            <div className="space-y-2">
+              <label htmlFor="characterName" className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <User className="size-4" />
+                Uploader
+              </label>
+              <Input
+                id="characterName"
+                placeholder="Keeps track of your efforts"
+                value={characterName}
+                onChange={(e) => setCharacterName(e.target.value)}
+                className="h-11 rounded-xl bg-white/[0.03] border-white/10 focus:border-primary/50"
+              />
+            </div>
+
+            {/* Node Selection */}
+            <div className="space-y-2">
+              <label htmlFor="nodeSelect" className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <MapPin className="size-4" />
+                Node
+              </label>
+              <Select value={selectedNode} onValueChange={(value) => setSelectedNode(value as NodeType)}>
+                <SelectTrigger id="nodeSelect" className="w-full !h-11 !rounded-xl !bg-white/[0.03] border-white/10">
+                  <SelectValue placeholder="Select node" />
+                </SelectTrigger>
+                <SelectContent>
+                  {NODES.map((node) => (
+                    <SelectItem key={node} value={node}>{node}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
         {/* Dropzone - Full when idle, compact when processing */}
         {state === "idle" ? (
           <div
             className={cn(
-              "relative rounded-2xl border-2 border-dashed transition-all duration-300 cursor-pointer overflow-hidden",
-              isDragging
+              "relative rounded-2xl border-2 border-dashed transition-all duration-300 overflow-hidden",
+              !canUpload && "opacity-50 cursor-not-allowed",
+              canUpload && "cursor-pointer",
+              isDragging && canUpload
                 ? "border-primary bg-primary/5"
-                : "border-white/10 hover:border-white/20 bg-white/[0.02]"
+                : "border-white/10 hover:border-white/20 bg-white/[0.02]",
+              !canUpload && "hover:border-white/10"
             )}
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+            onDragOver={(e) => { e.preventDefault(); if (canUpload) setIsDragging(true) }}
             onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
+            onDrop={(e) => { if (canUpload) handleDrop(e); else e.preventDefault() }}
+            onClick={() => { if (canUpload) fileInputRef.current?.click() }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
+              if ((e.key === 'Enter' || e.key === ' ') && canUpload) {
                 e.preventDefault()
                 fileInputRef.current?.click()
               }
             }}
             role="button"
-            tabIndex={0}
-            aria-label="Upload screenshots. Click or press Enter to browse files, or drag and drop files here."
+            tabIndex={canUpload ? 0 : -1}
+            aria-label={canUpload ? "Upload screenshots. Click or press Enter to browse files, or drag and drop files here." : "Please fill in character name and select a node before uploading."}
+            aria-disabled={!canUpload}
           >
             {/* Hidden file input */}
             <input
@@ -415,14 +568,23 @@ export default function UploadPage() {
               </div>
 
               <h3 className="text-xl font-semibold mb-2">
-                {isDragging ? "Release to upload" : "Drop marketplace screenshots"}
+                {!canUpload
+                  ? "Fill in details above first"
+                  : isDragging
+                    ? "Release to upload"
+                    : "Drop marketplace screenshots"}
               </h3>
               <p className="text-muted-foreground text-sm mb-6 max-w-sm">
-                Drag and drop your screenshots here, or click to browse.
-                Supports PNG and JPEG files.
+                {!canUpload
+                  ? "Enter your character name and select a node before uploading screenshots."
+                  : "Drag and drop your screenshots here, or click to browse. Supports PNG and JPEG files."}
               </p>
 
-              <Button variant="outline" className="border-white/10 bg-white/5 hover:bg-white/10">
+              <Button
+                variant="outline"
+                className="border-white/10 bg-white/5 hover:bg-white/10"
+                disabled={!canUpload}
+              >
                 <FileImage className="size-4 mr-2" />
                 Browse Files
               </Button>
@@ -485,7 +647,9 @@ export default function UploadPage() {
                 </div>
                 <div>
                   <p className="font-semibold">AI Processing</p>
-                  <p className="text-xs text-muted-foreground">OpenAI Vision • Reasoning Mode</p>
+                  <p className="text-xs text-muted-foreground">
+                    Extracting marketplace data from screenshots
+                  </p>
                 </div>
               </div>
             </div>
@@ -518,17 +682,17 @@ export default function UploadPage() {
                 </div>
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
                   <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                    <Layers className="size-4" />
-                    <span className="text-xs uppercase tracking-wider">Batches</span>
+                    <Brain className="size-4" />
+                    <span className="text-xs uppercase tracking-wider">Model</span>
                   </div>
-                  <p className="text-2xl font-bold font-mono">{progressData.batchCurrent}<span className="text-muted-foreground">/{progressData.batchTotal}</span></p>
+                  <p className="text-lg font-bold">{AI_MODELS.find(m => m.value === selectedModel)?.label || selectedModel}</p>
                 </div>
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
                   <div className="flex items-center gap-2 text-muted-foreground mb-2">
                     <Package className="size-4" />
                     <span className="text-xs uppercase tracking-wider">Items</span>
                   </div>
-                  <p className="text-2xl font-bold font-mono text-primary">{progressData.itemsExtracted}</p>
+                  <p className="text-2xl font-bold font-mono">{progressData.itemsExtracted}</p>
                 </div>
               </div>
 
@@ -617,11 +781,9 @@ export default function UploadPage() {
               </p>
 
               <div className="flex justify-center gap-4">
-                <Button asChild className="h-11 px-6 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white glow-success">
-                  <a href="/market">
-                    View in Market Explorer
-                    <ArrowRight className="size-4 ml-2" />
-                  </a>
+                <Button render={<a href="/market" />} className="h-11 px-6 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white glow-success">
+                  View in Market Explorer
+                  <ArrowRight className="size-4 ml-2" />
                 </Button>
                 <Button
                   variant="outline"

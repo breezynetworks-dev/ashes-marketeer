@@ -4,10 +4,10 @@ import { eq, and, isNull } from 'drizzle-orm'
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
 
     // Check if listing exists and is not deleted
@@ -93,6 +93,7 @@ export async function PATCH(
         total: updatedListing.totalPriceCopper,
       },
       node: updatedListing.node,
+      uploadedBy: updatedListing.uploadedBy,
       timestamp: updatedListing.createdAt,
     }
 
@@ -108,10 +109,10 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
 
     // Check if listing exists and is not already deleted
     const [existingListing] = await db

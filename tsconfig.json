@@ -30,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "_old-apps-reference-only", "components/ui/navigation-menu.tsx", "components/ui/resizable.tsx", "components/ui/sidebar.tsx"]
 }

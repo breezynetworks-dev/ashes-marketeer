@@ -31,8 +31,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background`}
       >
-        <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
-        <div className="fixed inset-0 bg-gradient-mesh pointer-events-none" />
+        {/* <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
+        <div className="fixed inset-0 bg-gradient-mesh pointer-events-none" /> */}
         <Nav />
         <main className="relative ml-64">{children}</main>
         <Toaster position="bottom-right" />

@@ -32,11 +32,11 @@ export async function POST(request: NextRequest) {
 
     if (body.keepDays === 'all') {
       // Delete all records from both tables
-      const uploadResult = await db.delete(uploadHistory)
-      const priceResult = await db.delete(priceHistory)
+      const uploadResult = await db.delete(uploadHistory).returning({ id: uploadHistory.id })
+      const priceResult = await db.delete(priceHistory).returning({ id: priceHistory.id })
 
-      uploadHistoryDeleted = uploadResult.rowCount ?? 0
-      priceHistoryDeleted = priceResult.rowCount ?? 0
+      uploadHistoryDeleted = uploadResult.length
+      priceHistoryDeleted = priceResult.length
     } else {
       // Calculate cutoff date
       const cutoffDate = new Date()
@@ -46,8 +46,9 @@ export async function POST(request: NextRequest) {
       const uploadResult = await db
         .delete(uploadHistory)
         .where(lt(uploadHistory.processedAt, cutoffDate))
+        .returning({ id: uploadHistory.id })
 
-      uploadHistoryDeleted = uploadResult.rowCount ?? 0
+      uploadHistoryDeleted = uploadResult.length
 
       // Delete price_history records older than cutoff (using date field)
       // Need to convert date field to string for comparison (format: YYYY-MM-DD)
@@ -55,8 +56,9 @@ export async function POST(request: NextRequest) {
       const priceResult = await db
         .delete(priceHistory)
         .where(sql`${priceHistory.date} < ${cutoffDateStr}`)
+        .returning({ id: priceHistory.id })
 
-      priceHistoryDeleted = priceResult.rowCount ?? 0
+      priceHistoryDeleted = priceResult.length
     }
 
     return NextResponse.json({

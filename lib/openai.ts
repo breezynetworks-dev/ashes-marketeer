@@ -9,14 +9,13 @@ const openai = new OpenAI({
 })
 
 export type MarketplaceListing = {
-  seller_name: string
+  store_name: string
   item_name: string
   quantity: number
   rarity: 'Common' | 'Uncommon' | 'Rare' | 'Heroic' | 'Epic' | 'Legendary'
   gold: number
   silver: number
   copper: number
-  node?: 'New Aela' | 'Halcyon' | 'Joeva' | 'Miraleth' | 'Winstead'
 }
 
 export type ExtractionResult = {
@@ -24,40 +23,93 @@ export type ExtractionResult = {
   tokenUsage: number
 }
 
-const EXTRACTION_PROMPT = `You are analyzing a screenshot from the Ashes of Creation MMORPG marketplace.
+const EXTRACTION_PROMPT = `You are extracting marketplace listings from Ashes of Creation screenshots.
 
-Extract ALL marketplace listings visible in the image. For each listing, extract:
-- seller_name: The name of the store/seller
-- item_name: The name of the item being sold
-- quantity: The number of items available (as a number)
-- rarity: One of: Common, Uncommon, Rare, Heroic, Epic, Legendary
-- gold: Gold price (as a number, 0 if not shown)
-- silver: Silver price (as a number, 0 if not shown)
-- copper: Copper price (as a number, 0 if not shown)
-- node: The server/node name if visible in the screenshot. One of: New Aela, Halcyon, Joeva, Miraleth, Winstead. Omit this field if not visible.
+## VISUAL REFERENCE (Critical for accuracy)
 
-Return a JSON object with this exact structure:
+**Currency identification is by COIN COLOR, not position:**
+- GOLD coin: Yellow/golden colored circle
+- SILVER coin: Grey/white colored circle
+- COPPER coin: Orange/brown colored circle
+
+**Rarity identification is by BORDER/TEXT COLOR:**
+- Common: Grey/white text
+- Uncommon: Green
+- Rare: Blue
+- Heroic: Purple
+- Epic: Dark purple/magenta
+- Legendary: Gold/orange
+
+## MANDATORY EXTRACTION PROCESS
+
+For EACH item's price, you MUST follow this exact sequence:
+
+STEP 1: Count how many coin icons are displayed (1, 2, or 3)
+STEP 2: For each coin LEFT to RIGHT, identify its COLOR:
+        - Yellow/gold tint = GOLD
+        - Grey/white/silver tint = SILVER
+        - Orange/brown/copper tint = COPPER
+STEP 3: Match each number to its adjacent coin's color
+STEP 4: Fill in 0 for any currency type that has no coin displayed
+
+EXAMPLE WALKTHROUGHS:
+
+Example A: Screenshot shows "49" [grey coin] "50" [orange coin]
+- Step 1: 2 coins visible
+- Step 2: First coin is GREY (silver), second coin is ORANGE (copper)
+- Step 3: 49 = silver, 50 = copper
+- Step 4: No yellow coin present → gold = 0
+- Result: gold: 0, silver: 49, copper: 50
+- NOT: gold: 49, silver: 50, copper: 0 ← WRONG
+
+Example B: Screenshot shows "55" [grey coin]
+- Step 1: 1 coin visible
+- Step 2: Coin is GREY (silver)
+- Step 3: 55 = silver
+- Step 4: No yellow coin → gold = 0, no orange coin → copper = 0
+- Result: gold: 0, silver: 55, copper: 0
+- NOT: gold: 55, silver: 0, copper: 0 ← WRONG
+
+Example C: Screenshot shows "4" [yellow coin] "67" [grey coin] "50" [orange coin]
+- Step 1: 3 coins visible
+- Step 2: Yellow (gold), grey (silver), orange (copper)
+- Step 3: 4 = gold, 67 = silver, 50 = copper
+- Step 4: All present
+- Result: gold: 4, silver: 67, copper: 50
+
+## OUTPUT FORMAT
+
+Return a JSON object with this structure:
 {
+  "reasoning": [
+    "[store_name] | [item_name] | qty:[quantity] | [rarity] | COINS: [colors seen] | PRICES: [numbers] | RESULT: [g],[s],[c]"
+  ],
+  "verification": "VERIFICATION COMPLETE: No errors found" or "CORRECTED [item]: [reason]",
   "listings": [
     {
-      "seller_name": "string",
+      "store_name": "string",
       "item_name": "string",
       "quantity": number,
       "rarity": "Common|Uncommon|Rare|Heroic|Epic|Legendary",
       "gold": number,
       "silver": number,
-      "copper": number,
-      "node": "New Aela|Halcyon|Joeva|Miraleth|Winstead" (optional)
+      "copper": number
     }
   ]
 }
 
-Important:
-- Extract ALL visible listings from the screenshot
-- Use exact spelling from the screenshot
-- If a price component is not shown, use 0
-- Ensure rarity matches exactly one of the valid options
-- Return an empty listings array if no marketplace data is visible`
+The "reasoning" array must contain one entry per item showing your coin color analysis.
+The "verification" field confirms you checked for errors.
+The "listings" array contains the final corrected data.
+
+Return empty listings array if no marketplace data is visible.
+
+## CRITICAL REMINDERS
+
+- Position does NOT indicate currency type. "49 50" could be silver+copper, NOT gold+silver.
+- When in doubt, look at the COIN COLOR next to each number.
+- Common and Uncommon items very rarely cost gold. If you extracted gold for these, double-check.
+- The most common error is assuming the first number is gold. RESIST this assumption.`
 
 async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))

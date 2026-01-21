@@ -46,10 +46,12 @@ export async function PATCH(
       )
     }
 
-    // For trend_period_days, wrap the value in the expected JSONB structure
+    // Handle different setting types with appropriate JSONB structure
     let valueToStore = body.value
     if (key === 'trend_period_days' && typeof body.value === 'number') {
       valueToStore = { days: body.value }
+    } else if (key === 'ai_extraction_model' && typeof body.value === 'string') {
+      valueToStore = { model: body.value }
     }
 
     // Check if setting exists

@@ -45,6 +45,15 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+
+  /* Rarity colors - Ashes of Creation */
+  --color-rarity-poor: #9d9d9d;
+  --color-rarity-common: #ffffff;
+  --color-rarity-uncommon: #1eff00;
+  --color-rarity-rare: #0070dd;
+  --color-rarity-heroic: #b79c3e;
+  --color-rarity-epic: #a335ee;
+  --color-rarity-legendary: #ff8000;
 }
 
 :root {
@@ -124,6 +133,7 @@
     @apply bg-background text-foreground;
   }
 }
+
 
 /* Premium Design Utilities */
 @layer utilities {

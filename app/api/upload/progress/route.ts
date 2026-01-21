@@ -86,12 +86,14 @@ export async function GET(request: NextRequest) {
             (sum, r) => sum + r.itemCount,
             0
           )
+          const failedCount = batchState.results.filter(r => !r.success).length
 
           const completeEvent: SSEEvent = {
             type: 'complete',
             totalItems,
             totalTokens: batchState.totalTokens,
             skippedCount: batchState.skippedCount,
+            failedCount,
           }
 
           controller.enqueue(encoder.encode(formatSSEMessage(completeEvent)))

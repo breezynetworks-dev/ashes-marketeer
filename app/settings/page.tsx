@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { AlertTriangle, Trash2, TrendingUp, Database, HardDrive, Settings, Clock, Flame } from "lucide-react"
+import { AlertTriangle, Trash2, TrendingUp, Database, HardDrive, Settings, Clock, Flame, Brain, DollarSign, FileText } from "lucide-react"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { AI_MODELS, DEFAULT_MODEL, type AIModel, getModelConfig, EXTRACTION_PROMPT } from "@/lib/ai-extraction"
 
 interface Stats {
   totalListings: number
@@ -35,7 +37,7 @@ interface Stats {
 }
 
 export default function SettingsPage() {
-  const [trendPeriod, setTrendPeriod] = useState("30")
+  const [trendPeriod, setTrendPeriod] = useState("14")
   const [clearPeriod, setClearPeriod] = useState("90")
   const [stats, setStats] = useState<Stats | null>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(true)
@@ -43,16 +45,53 @@ export default function SettingsPage() {
   const [isSavingTrendPeriod, setIsSavingTrendPeriod] = useState(false)
   const [isClearingHistory, setIsClearingHistory] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false)
+  const [isClearingAll, setIsClearingAll] = useState(false)
+  const [aiModel, setAiModel] = useState<AIModel>(DEFAULT_MODEL)
+  const [isSavingAiModel, setIsSavingAiModel] = useState(false)
+  const [availableProviders, setAvailableProviders] = useState<{ openai: boolean; anthropic: boolean; google: boolean }>({ openai: true, anthropic: false, google: false })
+  const [usageData, setUsageData] = useState<{ totalTokens: number; totalImages: number; lastUpdated: string | null }>({ totalTokens: 0, totalImages: 0, lastUpdated: null })
 
   // Fetch settings on mount
   useEffect(() => {
     async function fetchSettings() {
       try {
-        const response = await fetch('/api/settings/trend_period_days')
-        if (!response.ok) throw new Error('Failed to fetch settings')
-        const data = await response.json()
-        if (data.value?.days) {
-          setTrendPeriod(data.value.days.toString())
+        // Fetch trend period, AI model settings, and usage tracking in parallel
+        const [trendResponse, modelResponse, providersResponse, usageResponse] = await Promise.all([
+          fetch('/api/settings/trend_period_days'),
+          fetch('/api/settings/ai_extraction_model'),
+          fetch('/api/ai-providers'),
+          fetch('/api/settings/usage_tracking'),
+        ])
+
+        if (trendResponse.ok) {
+          const data = await trendResponse.json()
+          if (data.value?.days) {
+            setTrendPeriod(data.value.days.toString())
+          }
+        }
+
+        if (modelResponse.ok) {
+          const data = await modelResponse.json()
+          if (data.value?.model) {
+            setAiModel(data.value.model as AIModel)
+          }
+        }
+
+        if (providersResponse.ok) {
+          const data = await providersResponse.json()
+          setAvailableProviders(data)
+        }
+
+        if (usageResponse.ok) {
+          const data = await usageResponse.json()
+          if (data.value) {
+            setUsageData({
+              totalTokens: data.value.totalTokens || 0,
+              totalImages: data.value.totalImages || 0,
+              lastUpdated: data.value.lastUpdated || null,
+            })
+          }
         }
       } catch (error) {
         console.error('Failed to fetch settings:', error)
@@ -85,7 +124,8 @@ export default function SettingsPage() {
   }
 
   // Auto-save trend period when changed
-  async function handleTrendPeriodChange(value: string) {
+  async function handleTrendPeriodChange(value: string | null) {
+    if (!value) return
     setTrendPeriod(value)
     setIsSavingTrendPeriod(true)
     try {
@@ -101,6 +141,39 @@ export default function SettingsPage() {
     } finally {
       setIsSavingTrendPeriod(false)
     }
+  }
+
+  // Auto-save AI model when changed
+  async function handleAiModelChange(value: AIModel | null) {
+    if (!value) return
+    setAiModel(value)
+    setIsSavingAiModel(true)
+    try {
+      const response = await fetch('/api/settings/ai_extraction_model', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      })
+      if (!response.ok) throw new Error('Failed to save setting')
+      toast.success('AI model updated')
+    } catch (error) {
+      console.error('Failed to save AI model:', error)
+      toast.error('Failed to save AI model')
+    } finally {
+      setIsSavingAiModel(false)
+    }
+  }
+
+  // Check if a model is available - only Gemini 3 Flash is enabled
+  function isModelAvailable(modelValue: AIModel): boolean {
+    // Only allow Gemini 3 Flash
+    if (modelValue !== 'gemini-3-flash-preview') return false
+    return availableProviders.google
+  }
+
+  // Handler for clear period select
+  function handleClearPeriodChange(value: string | null) {
+    if (value) setClearPeriod(value)
   }
 
   // Clear history handler
@@ -172,6 +245,31 @@ export default function SettingsPage() {
     return `This action cannot be undone. This will permanently delete all upload history and price history records older than ${clearPeriod} days.`
   }
 
+  // Clear all data handler
+  async function handleClearAll() {
+    setIsClearingAll(true)
+    try {
+      const response = await fetch('/api/listings/clear', {
+        method: 'POST',
+      })
+      if (!response.ok) throw new Error('Failed to clear all data')
+      const data = await response.json()
+
+      toast.success(`Cleared ${data.listings} listings, ${data.uploads} uploads, ${data.prices} price records`)
+
+      // Refresh stats
+      await fetchStats()
+
+      // Close dialog
+      setClearAllDialogOpen(false)
+    } catch (error) {
+      console.error('Failed to clear all data:', error)
+      toast.error('Failed to clear all data')
+    } finally {
+      setIsClearingAll(false)
+    }
+  }
+
   return (
     <div className="px-8 py-6 max-w-4xl">
       {/* Page Header */}
@@ -215,6 +313,146 @@ export default function SettingsPage() {
                     Sparklines will show {trendPeriod}-day trends
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* AI Extraction Model */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+          <div className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="size-12 rounded-xl bg-gradient-to-br from-chart-5/20 to-chart-5/5 flex items-center justify-center shrink-0">
+                <Brain className="size-5 text-chart-5" />
+              </div>
+              <div className="flex-1">
+                <h2 className="font-semibold mb-1">AI Extraction Model</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Model used for extracting marketplace data from screenshots
+                </p>
+                <div className="flex items-center gap-4">
+                  <Select value={aiModel} onValueChange={handleAiModelChange} disabled={isLoadingSettings || isSavingAiModel}>
+                    <SelectTrigger className="w-[280px] bg-white/[0.03] border-white/5">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AI_MODELS.map((model) => {
+                        const available = isModelAvailable(model.value)
+                        return (
+                          <SelectItem
+                            key={model.value}
+                            value={model.value}
+                            disabled={!available}
+                            className={cn(!available && "opacity-50")}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{model.label}</span>
+                              <span className="text-xs text-muted-foreground">({model.provider})</span>
+                              {!available && <span className="text-xs text-muted-foreground">Disabled</span>}
+                            </div>
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="mt-3 p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div className="text-muted-foreground/70">Parallel processing</div>
+                    <div className="font-mono text-foreground">{getModelConfig(aiModel).maxConcurrent} concurrent requests</div>
+
+                    <div className="text-muted-foreground/70">Delay between chunks</div>
+                    <div className="font-mono text-foreground">{getModelConfig(aiModel).delayBetweenMs}ms</div>
+
+                    <div className="text-muted-foreground/70">Max output tokens</div>
+                    <div className="font-mono text-foreground">8,192</div>
+
+                    <div className="text-muted-foreground/70">Prompt caching</div>
+                    <div className="font-mono text-foreground">Enabled (saves ~90% input tokens)</div>
+
+                    <div className="text-muted-foreground/70">Cache TTL</div>
+                    <div className="font-mono text-foreground">1 hour</div>
+
+                    <div className="text-muted-foreground/70">Failed image retry</div>
+                    <div className="font-mono text-foreground">Automatic (end of batch)</div>
+                  </div>
+                  <p className="text-xs text-muted-foreground/50 pt-1 border-t border-white/5">
+                    {getModelConfig(aiModel).maxConcurrent} images per chunk with staggered starts for optimal throughput
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Estimated Costs */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+          <div className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="size-12 rounded-xl bg-gradient-to-br from-green-500/20 to-green-500/5 flex items-center justify-center shrink-0">
+                <DollarSign className="size-5 text-green-500" />
+              </div>
+              <div className="flex-1">
+                <h2 className="font-semibold mb-1">Estimated Costs</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Cumulative usage tracking for Gemini 3 Flash. Persists through database clears.
+                </p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Images</p>
+                    <p className="text-xl font-bold font-mono">{usageData.totalImages.toLocaleString()}</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Tokens</p>
+                    <p className="text-xl font-bold font-mono">{(usageData.totalTokens / 1000).toFixed(1)}k</p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Est. Cost</p>
+                    <p className="text-xl font-bold font-mono text-green-400">
+                      ${((usageData.totalTokens / 1_000_000) * 0.30).toFixed(4)}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground/50">
+                  Based on Gemini 3 Flash blended rate of ~$0.30/1M tokens (input $0.15 + output $0.60 weighted)
+                </p>
+                {usageData.lastUpdated && (
+                  <p className="mt-1 text-xs text-muted-foreground/40">
+                    Last updated: {new Date(usageData.lastUpdated).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Extraction Prompt */}
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+          <div className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="size-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-500/5 flex items-center justify-center shrink-0">
+                <FileText className="size-5 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="font-semibold">Extraction Prompt</h2>
+                  <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-white/5 text-muted-foreground">
+                    Read-only
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  System prompt used for AI extraction. This prompt is cached to reduce tokens per call.
+                </p>
+                <ScrollArea className="h-[32rem] rounded-xl bg-black/30 border border-white/5">
+                  <div className="p-4">
+                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
+                      {EXTRACTION_PROMPT}
+                    </pre>
+                  </div>
+                </ScrollArea>
+                <p className="mt-3 text-xs text-muted-foreground/50">
+                  ~1,100 tokens • Cached for 1 hour per session
+                </p>
               </div>
             </div>
           </div>
@@ -316,7 +554,7 @@ export default function SettingsPage() {
 
                 <div className="flex items-center gap-4 mb-4">
                   <span className="text-sm">Keep data from:</span>
-                  <Select value={clearPeriod} onValueChange={setClearPeriod}>
+                  <Select value={clearPeriod} onValueChange={handleClearPeriodChange}>
                     <SelectTrigger className="w-[180px] bg-white/[0.03] border-white/5">
                       <SelectValue />
                     </SelectTrigger>
@@ -347,16 +585,18 @@ export default function SettingsPage() {
                 </div>
 
                 <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="destructive"
-                      className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border-0"
-                      disabled={!stats || stats.totalUploads === 0}
-                    >
-                      <Trash2 className="size-4 mr-2" />
-                      Clear History
-                    </Button>
-                  </AlertDialogTrigger>
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        variant="destructive"
+                        className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border-0"
+                        disabled={!stats || stats.totalUploads === 0}
+                      >
+                        <Trash2 className="size-4 mr-2" />
+                        Clear History
+                      </Button>
+                    }
+                  />
                   <AlertDialogContent className="border-white/10 bg-card">
                     <AlertDialogHeader>
                       <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
@@ -375,6 +615,74 @@ export default function SettingsPage() {
                         disabled={isClearingHistory}
                       >
                         {isClearingHistory ? 'Deleting...' : 'Yes, delete history'}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Clear All Data */}
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/[0.02] overflow-hidden">
+          <div className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="size-12 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                <Flame className="size-5 text-red-400" />
+              </div>
+              <div className="flex-1">
+                <h2 className="font-semibold text-red-400 mb-1">Clear All Data</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Permanently delete all marketplace listings, upload history, and price records
+                </p>
+
+                <div className="p-4 rounded-xl bg-red-500/5 border border-red-500/20 mb-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="size-4 text-red-500 mt-0.5 shrink-0" />
+                    <div className="text-sm">
+                      <p className="text-red-400 font-medium mb-1">This will delete everything</p>
+                      <ul className="text-muted-foreground space-y-1 text-xs">
+                        <li>• All marketplace listings will be deleted</li>
+                        <li>• All upload history will be deleted</li>
+                        <li>• All price history will be deleted</li>
+                        <li>• Database will be completely empty</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <AlertDialog open={clearAllDialogOpen} onOpenChange={setClearAllDialogOpen}>
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        variant="destructive"
+                        className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border-0"
+                        disabled={!stats || (stats.totalListings === 0 && stats.totalUploads === 0)}
+                      >
+                        <Trash2 className="size-4 mr-2" />
+                        Clear All Data
+                      </Button>
+                    }
+                  />
+                  <AlertDialogContent className="border-white/10 bg-card">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="text-red-400">Delete all data?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete all marketplace listings, upload history, and price history records. Your database will be completely empty.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel className="border-white/10" disabled={isClearingAll}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-red-500 hover:bg-red-600 text-white"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          handleClearAll()
+                        }}
+                        disabled={isClearingAll}
+                      >
+                        {isClearingAll ? 'Deleting...' : 'Yes, delete everything'}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
