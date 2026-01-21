@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(powershell.exe -Command \"$env:PGPASSWORD=''postgres''; psql -U postgres -c ''\\\\l''\")",
-      "Bash(powershell.exe -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\")"
-    ]
-  }
-}
