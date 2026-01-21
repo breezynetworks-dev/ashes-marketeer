@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { AlertTriangle, Trash2, TrendingUp, Database, HardDrive, Settings, Clock, Flame, Brain, DollarSign, FileText } from "lucide-react"
+import { AlertTriangle, Trash2, TrendingUp, Database, HardDrive, Settings, Clock, Flame, Brain, DollarSign, FileText, Lock, ArrowRight, AlertCircle } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -37,6 +38,14 @@ interface Stats {
 }
 
 export default function SettingsPage() {
+  // Admin auth state
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [adminCode, setAdminCode] = useState("")
+  const [adminError, setAdminError] = useState("")
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+
+  // Settings state
   const [trendPeriod, setTrendPeriod] = useState("14")
   const [clearPeriod, setClearPeriod] = useState("90")
   const [stats, setStats] = useState<Stats | null>(null)
@@ -51,6 +60,55 @@ export default function SettingsPage() {
   const [isSavingAiModel, setIsSavingAiModel] = useState(false)
   const [availableProviders, setAvailableProviders] = useState<{ openai: boolean; anthropic: boolean; google: boolean }>({ openai: true, anthropic: false, google: false })
   const [usageData, setUsageData] = useState<{ totalTokens: number; totalImages: number; lastUpdated: string | null }>({ totalTokens: 0, totalImages: 0, lastUpdated: null })
+
+  // Check admin auth on mount
+  useEffect(() => {
+    async function checkAdminAuth() {
+      try {
+        const response = await fetch('/api/auth/admin/check')
+        const data = await response.json()
+        setIsAdminAuthenticated(data.authenticated)
+      } catch (error) {
+        console.error('Failed to check admin auth:', error)
+        setIsAdminAuthenticated(false)
+      } finally {
+        setIsCheckingAuth(false)
+      }
+    }
+    checkAdminAuth()
+  }, [])
+
+  // Admin login handler
+  async function handleAdminLogin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!adminCode.trim()) {
+      setAdminError("Please enter the admin code")
+      return
+    }
+
+    setIsLoggingIn(true)
+    setAdminError("")
+
+    try {
+      const response = await fetch('/api/auth/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: adminCode }),
+      })
+
+      if (response.ok) {
+        setIsAdminAuthenticated(true)
+        setAdminCode("")
+      } else {
+        const data = await response.json()
+        setAdminError(data.error || "Invalid admin code")
+      }
+    } catch {
+      setAdminError("Something went wrong. Please try again.")
+    } finally {
+      setIsLoggingIn(false)
+    }
+  }
 
   // Fetch settings on mount
   useEffect(() => {
@@ -268,6 +326,100 @@ export default function SettingsPage() {
     } finally {
       setIsClearingAll(false)
     }
+  }
+
+  // Show loading state while checking auth
+  if (isCheckingAuth) {
+    return (
+      <div className="px-8 py-6 max-w-4xl">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="size-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+            <Settings className="size-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Settings</h1>
+            <p className="text-sm text-muted-foreground">Configure preferences and manage data</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="size-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+        </div>
+      </div>
+    )
+  }
+
+  // Show admin login if not authenticated
+  if (!isAdminAuthenticated) {
+    return (
+      <div className="px-8 py-6 max-w-4xl">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="size-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+            <Settings className="size-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Settings</h1>
+            <p className="text-sm text-muted-foreground">Configure preferences and manage data</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden max-w-md">
+          <div className="p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="size-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                <Lock className="size-5 text-primary" />
+              </div>
+              <div>
+                <h2 className="font-semibold">Admin Access Required</h2>
+                <p className="text-sm text-muted-foreground">Enter the admin code to continue</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <Input
+                  type="password"
+                  placeholder="Admin code"
+                  value={adminCode}
+                  onChange={(e) => {
+                    setAdminCode(e.target.value)
+                    setAdminError("")
+                  }}
+                  className="pl-11 h-12 bg-white/[0.03] border-white/10 focus:border-primary/50"
+                  disabled={isLoggingIn}
+                  autoFocus
+                />
+              </div>
+
+              {adminError && (
+                <div className="flex items-center gap-2 text-sm text-red-400">
+                  <AlertCircle className="size-4 shrink-0" />
+                  <span>{adminError}</span>
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full h-11 rounded-xl bg-gradient-to-r from-primary to-chart-3 hover:opacity-90"
+                disabled={isLoggingIn}
+              >
+                {isLoggingIn ? (
+                  <span className="flex items-center gap-2">
+                    <span className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Verifying...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    Enter Settings
+                    <ArrowRight className="size-4" />
+                  </span>
+                )}
+              </Button>
+            </form>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

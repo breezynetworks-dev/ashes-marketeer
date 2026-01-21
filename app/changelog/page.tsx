@@ -3,11 +3,8 @@
 import { ScrollText, Rocket } from "lucide-react"
 
 const roadmap = [
-  "Bulk delete market rows",
-  "Export data to CSV",
-  "Price alerts and notifications",
-  "Historical price charts per item",
-  "Community price submissions",
+  "Bulk actions (delete, edit, export to CSV)",
+  "Preview uploaded data before committing with LLM mistake detection",
 ]
 
 const changelog = [
@@ -25,7 +22,6 @@ const changelog = [
       "Moved database status and listing counts to bottom legend",
       "Increased table font sizes for better readability",
       "Added password-protected access with signed sessions",
-      "Added changelog page",
     ],
   },
   {

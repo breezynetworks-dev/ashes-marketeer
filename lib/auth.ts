@@ -7,6 +7,12 @@ const getSecret = () => {
   return secret
 }
 
+const getAdminSecret = () => {
+  const secret = process.env.ADMIN_CODE
+  if (!secret) throw new Error('ADMIN_CODE not set')
+  return secret
+}
+
 // Simple sync hash for token creation (runs in Node.js API routes)
 function simpleHash(data: string, secret: string): string {
   // Simple deterministic hash - XOR based mixing
@@ -54,6 +60,43 @@ export function verifySessionToken(token: string): boolean {
     // Verify payload structure
     const payload = JSON.parse(data)
     if (!payload.created || !payload.random) return false
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Create a signed admin session token
+export function createAdminSessionToken(): string {
+  const payload = {
+    created: Date.now(),
+    random: Math.random().toString(36).slice(2),
+    admin: true,
+  }
+  const data = JSON.stringify(payload)
+  const signature = simpleHash(data, getAdminSecret())
+
+  // Format: base64(payload).signature
+  const token = `${btoa(data)}.${signature}`
+  return token
+}
+
+// Verify an admin session token is valid
+export function verifyAdminSessionToken(token: string): boolean {
+  try {
+    const [payloadB64, signature] = token.split('.')
+    if (!payloadB64 || !signature) return false
+
+    const data = atob(payloadB64)
+    const expectedSignature = simpleHash(data, getAdminSecret())
+
+    // Check signature matches
+    if (signature !== expectedSignature) return false
+
+    // Verify payload structure
+    const payload = JSON.parse(data)
+    if (!payload.created || !payload.random || !payload.admin) return false
 
     return true
   } catch {

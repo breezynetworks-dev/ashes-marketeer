@@ -1,11 +1,5 @@
 import { NextResponse } from 'next/server'
-import { join } from 'path'
-import {
-  ensureDirectoryExists,
-  generateFileHash,
-  getTodayUploadDirectory,
-  saveFile,
-} from '@/lib/file-utils'
+import { generateFileHash } from '@/lib/file-utils'
 
 const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg']
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -14,7 +8,6 @@ interface FileMetadata {
   filename: string
   size: number
   hash: string
-  path: string
 }
 
 export async function POST(request: Request) {
@@ -28,10 +21,6 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
-
-    // Get today's upload directory
-    const uploadDir = getTodayUploadDirectory()
-    await ensureDirectoryExists(uploadDir)
 
     const metadata: FileMetadata[] = []
 
@@ -67,19 +56,14 @@ export async function POST(request: Request) {
       const arrayBuffer = await file.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
 
-      // Generate hash
+      // Generate hash for duplicate detection
       const hash = generateFileHash(buffer)
 
-      // Save file
-      const filePath = join(uploadDir, file.name)
-      await saveFile(filePath, buffer)
-
-      // Collect metadata
+      // Collect metadata (no file saving - processed in memory only)
       metadata.push({
         filename: file.name,
         size: file.size,
         hash,
-        path: filePath,
       })
     }
 

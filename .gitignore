@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# uploads
-/uploads
 nul
+
+# local reference/backup folders
+_old-apps-reference-only
+_prompts-backup-only
+_screenshots-test-only
