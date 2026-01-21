@@ -1,0 +1,15 @@
+Dockerfile
+.dockerignore
+node_modules
+npm-debug.log
+.next
+.git
+.gitignore
+*.md
+.env*
+!.env.example
+_old-apps-reference-only
+_prompts-backup-only
+_screenshots-test-only
+.breezybuilder
+.claude
