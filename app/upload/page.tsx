@@ -128,9 +128,9 @@ export default function UploadPage() {
   }, [])
 
   const addThought = (type: ThoughtMessage["type"], message: string) => {
-    thoughtIdCounter.current++
+    const id = ++thoughtIdCounter.current // Capture ID before state update callback
     setThoughts(prev => [...prev, {
-      id: thoughtIdCounter.current,
+      id,
       type,
       message
     }])
@@ -427,6 +427,9 @@ export default function UploadPage() {
       })
       setErrorMessage(null)
       setErrorFilename(null)
+      setTotalFilesSelected(0)
+      setDuplicateCount(0)
+      thoughtIdCounter.current = 0
       toast('Batch abandoned')
     } catch (error) {
       console.error('Failed to abandon batch:', error)

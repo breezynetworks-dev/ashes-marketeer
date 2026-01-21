@@ -5,6 +5,8 @@ import { ScrollText, Rocket } from "lucide-react"
 const roadmap = [
   "Bulk actions (delete, edit, export to CSV)",
   "Preview uploaded data before committing with LLM mistake detection",
+  "Multi-image batching per API call for faster processing and fewer failures",
+  "Investigate structured JSON output with implicit prompt caching (explicit caching incompatible)",
 ]
 
 const changelog = [
