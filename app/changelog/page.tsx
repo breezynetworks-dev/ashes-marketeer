@@ -24,6 +24,7 @@ const changelog = [
       "Updated filter bar with Rarity, Node, and Trend Period dropdowns",
       "Moved database status and listing counts to bottom legend",
       "Increased table font sizes for better readability",
+      "Added password-protected access with signed sessions",
       "Added changelog page",
     ],
   },
@@ -45,7 +46,6 @@ const changelog = [
       "Top items by price and store activity metrics",
       "Settings page with API key management",
       "Data management tools (clear history, clear all data)",
-      "User authentication with login system",
       "Uploader tracking for contributions",
       "Dark theme UI with glass morphism design",
       "Responsive sidebar navigation",
@@ -85,8 +85,8 @@ export default function ChangelogPage() {
               <div className="p-6">
                 <ul className="space-y-2">
                   {release.changes.map((change, index) => (
-                    <li key={index} className="flex items-start gap-3 text-sm text-muted-foreground">
-                      <span className="text-primary mt-1">•</span>
+                    <li key={index} className="flex items-baseline gap-3 text-sm text-muted-foreground">
+                      <span className="text-primary">•</span>
                       <span>{change}</span>
                     </li>
                   ))}
