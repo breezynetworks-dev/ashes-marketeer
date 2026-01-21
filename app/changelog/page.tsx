@@ -7,6 +7,7 @@ const roadmap = [
   "Preview uploaded data before committing with LLM mistake detection",
   "Multi-image batching per API call for faster processing and fewer failures",
   "Investigate structured JSON output with implicit prompt caching (explicit caching incompatible)",
+  "More descriptive API error logging and investigate excessive retries",
 ]
 
 const changelog = [
