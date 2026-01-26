@@ -122,7 +122,7 @@ export function canAccessRoute(role: UserRole, pathname: string): boolean {
   if (pathname.startsWith('/api/upload')) {
     return ['uploader', 'admin'].includes(role)
   }
-  if (pathname.startsWith('/api/market') || pathname.startsWith('/api/items')) {
+  if (pathname.startsWith('/api/market') || pathname.startsWith('/api/items') || pathname.startsWith('/api/listings')) {
     return ['browser', 'admin'].includes(role)
   }
   if (pathname.startsWith('/api/settings')) {
