@@ -12,6 +12,20 @@ const roadmap = [
 
 const changelog = [
   {
+    version: "1.0.3",
+    date: "January 26, 2026",
+    changes: [
+      "Added three-tier role-based access control (Uploader, Browser, Admin)",
+      "Uploader role: upload page access only",
+      "Browser role: market browser access only",
+      "Admin role: full access to all features including settings",
+      "Added role-aware navigation that shows only permitted pages",
+      "Added logout button to navigation sidebar",
+      "Simplified settings page (middleware handles admin auth)",
+      "Replaced unused proxy.ts with proper Next.js middleware",
+    ],
+  },
+  {
     version: "1.0.2",
     date: "January 21, 2026",
     changes: [
