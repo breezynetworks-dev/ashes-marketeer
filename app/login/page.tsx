@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Lock, ArrowRight, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
 export default function LoginPage() {
-  const router = useRouter()
   const [code, setCode] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -37,8 +35,7 @@ export default function LoginPage() {
 
       if (response.ok) {
         const data = await response.json()
-        router.push(data.redirect || "/")
-        router.refresh()
+        window.location.href = data.redirect || "/"
       } else {
         const data = await response.json()
         setError(data.error || "Invalid access code")
