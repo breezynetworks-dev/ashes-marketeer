@@ -36,7 +36,8 @@ export default function LoginPage() {
       })
 
       if (response.ok) {
-        router.push("/")
+        const data = await response.json()
+        router.push(data.redirect || "/")
         router.refresh()
       } else {
         const data = await response.json()
