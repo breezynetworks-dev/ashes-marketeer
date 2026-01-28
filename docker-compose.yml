@@ -10,7 +10,8 @@ services:
       - "8001:3000"
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@timescaledb:5432/ashes_marketeer
-      - ACCESS_CODE=${ACCESS_CODE}
+      - UPLOADER_CODE=${UPLOADER_CODE}
+      - BROWSER_CODE=${BROWSER_CODE}
       - ADMIN_CODE=${ADMIN_CODE}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
