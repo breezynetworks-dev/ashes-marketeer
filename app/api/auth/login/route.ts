@@ -13,7 +13,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // DEBUG: Log env var availability (remove after debugging)
+    console.log('[AUTH DEBUG] Input code length:', code.length)
+    console.log('[AUTH DEBUG] ADMIN_CODE set:', !!process.env.ADMIN_CODE, 'length:', process.env.ADMIN_CODE?.length)
+    console.log('[AUTH DEBUG] BROWSER_CODE set:', !!process.env.BROWSER_CODE, 'length:', process.env.BROWSER_CODE?.length)
+    console.log('[AUTH DEBUG] UPLOADER_CODE set:', !!process.env.UPLOADER_CODE, 'length:', process.env.UPLOADER_CODE?.length)
+
     const role = authenticateCode(code)
+
+    console.log('[AUTH DEBUG] Resolved role:', role)
 
     if (!role) {
       return NextResponse.json(
