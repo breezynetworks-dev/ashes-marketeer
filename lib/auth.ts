@@ -122,11 +122,12 @@ export function canAccessRoute(role: UserRole, pathname: string): boolean {
   if (pathname.startsWith('/api/upload')) {
     return ['uploader', 'admin'].includes(role)
   }
-  if (pathname.startsWith('/api/market') || pathname.startsWith('/api/items') || pathname.startsWith('/api/listings')) {
+  if (pathname.startsWith('/api/market') || pathname.startsWith('/api/items') || pathname.startsWith('/api/listings') || pathname.startsWith('/api/trends')) {
     return ['browser', 'admin'].includes(role)
   }
   if (pathname.startsWith('/api/settings')) {
-    return role === 'admin'
+    // Browser can read settings (GET), but only admin can modify (handled in route)
+    return ['browser', 'admin'].includes(role)
   }
   if (pathname.startsWith('/api/statistics')) {
     return role === 'admin'
