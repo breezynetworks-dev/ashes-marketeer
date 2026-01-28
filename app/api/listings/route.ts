@@ -19,7 +19,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (rarity) {
-      conditions.push(eq(marketplaceListings.rarity, rarity as any))
+      // DB stores Title Case (e.g. 'Rare'), UI sends lowercase (e.g. 'rare')
+      const normalizedRarity = rarity.charAt(0).toUpperCase() + rarity.slice(1).toLowerCase()
+      conditions.push(eq(marketplaceListings.rarity, normalizedRarity as any))
     }
 
     if (node) {
